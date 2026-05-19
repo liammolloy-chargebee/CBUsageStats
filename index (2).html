@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Invoice Pivot &amp; Forecast</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    /* Brand palette */
+    --mature-blue: #012A38;
+    --confident-orange: #FF3300;
+    --light-orange: #FF523B;
+    --spunky-lime: #BFF90B;
+    --clarity-ivory: #E0DBC6;
+    --clarity-blue: #A2C1C4;
+    --storm-cloud: #4F6169;
+    --cadet-grey: #92A1A8;
+    --light-silver: #D3D9DC;
+    --clarity-white: #EFEFEF;
+
+    /* Semantic tokens */
+    --bg: #F7F8F9;
+    --surface: #FFFFFF;
+    --border: #E4E7EA;
+    --border-strong: #D3D9DC;
+    --text: #012A38;
+    --text-muted: #4F6169;
+    --text-subtle: #92A1A8;
+    --accent: #FF3300;
+    --accent-hover: #FF523B;
+    --true: #012A38;
+    --false: #92A1A8;
+    --forecast: #FF523B;
+    --success-bg: #F4FBE0;
+    --warn-bg: #FFF4E6;
+    --warn-border: #FF523B;
+    --shadow-sm: 0 1px 2px rgba(1, 42, 56, 0.06);
+    --shadow-md: 0 1px 3px rgba(1, 42, 56, 0.08), 0 4px 12px rgba(1, 42, 56, 0.04);
+    --shadow-lg: 0 4px 16px rgba(1, 42, 56, 0.08), 0 16px 32px rgba(1, 42, 56, 0.06);
+    --radius-sm: 6px;
+    --radius: 10px;
+    --radius-lg: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { min-height: 100vh; }
+
+  /* Top nav */
+  .navbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 32px;
+    display: flex; justify-content: space-between; align-items: center;
+    position: sticky; top: 0; z-index: 10;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; color: var(--text); }
+  .brand-mark {
+    width: 28px; height: 28px; border-radius: 7px;
+    background: var(--mature-blue);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--spunky-lime); font-weight: 700; font-size: 14px;
+    box-shadow: var(--shadow-sm);
+  }
+  .badge {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--text-muted); background: var(--clarity-white);
+    padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border);
+  }
+
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 32px 32px 80px; }
+
+  /* Page header */
+  .page-title { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 4px; }
+  .page-sub { color: var(--text-muted); font-size: 14px; margin-bottom: 28px; }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow-sm);
+  }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .card-head-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .step-num {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--mature-blue); color: var(--clarity-ivory);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; flex-shrink: 0;
+  }
+  .card-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  .card-sub { color: var(--text-muted); font-size: 13px; margin-top: 2px; }
+
+  .pill {
+    display: inline-flex; align-items: center; padding: 3px 10px;
+    font-size: 11px; font-weight: 500; letter-spacing: 0.01em;
+    background: var(--clarity-ivory); color: var(--mature-blue);
+    border-radius: 999px; border: 1px solid #d4cfb8;
+  }
+  .pill-true { background: #d6f5db; color: #14532d; border-color: #b8e6c1; }
+  .pill-false { background: var(--clarity-white); color: var(--storm-cloud); border-color: var(--border); }
+
+  /* Dropzone */
+  .drop {
+    display: block; width: 100%;
+    border: 2px dashed var(--border-strong);
+    background: #FAFBFC;
+    border-radius: var(--radius);
+    padding: 44px 28px; text-align: center; cursor: pointer;
+    transition: all 0.18s ease;
+  }
+  .drop:hover, .drop.over {
+    background: #FFF8F5;
+    border-color: var(--accent);
+  }
+  .drop-icon {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: var(--mature-blue); color: var(--spunky-lime);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 22px; margin-bottom: 12px;
+  }
+  .drop-main { font-size: 15px; font-weight: 500; color: var(--text); }
+  .drop-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .drop-link { color: var(--accent); font-weight: 600; }
+
+  .file-info {
+    margin-top: 14px; padding: 12px 16px;
+    background: var(--success-bg);
+    border: 1px solid #d8eeb3;
+    border-radius: var(--radius-sm);
+    font-size: 13px; color: var(--mature-blue);
+    display: none;
+  }
+  .file-info.show { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .file-info .filename { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .file-info .filename::before {
+    content: '✓'; display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--spunky-lime); color: var(--mature-blue);
+    font-size: 11px; font-weight: 700;
+  }
+  .file-info .meta { color: var(--text-muted); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+  /* Controls */
+  .controls {
+    display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-end;
+    padding: 16px 18px;
+    background: var(--clarity-white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .ctrl label {
+    display: block; font-size: 12px; font-weight: 500;
+    color: var(--text-muted); margin-bottom: 6px;
+  }
+  .ctrl input[type="number"] {
+    font-family: inherit; font-size: 14px;
+    border: 1px solid var(--border-strong); background: var(--surface);
+    padding: 8px 12px; width: 110px; color: var(--text);
+    border-radius: var(--radius-sm);
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .ctrl input[type="number"]:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(255, 51, 0, 0.12);
+  }
+
+  /* Buttons */
+  button.primary, button.secondary {
+    font-family: inherit; font-weight: 600; font-size: 13px;
+    padding: 10px 18px; cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: all 0.15s ease;
+    display: inline-flex; align-items: center; gap: 8px;
+    border: 1px solid transparent;
+  }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+  button.primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+  button.secondary { background: var(--surface); color: var(--text); border-color: var(--border-strong); }
+  button.secondary:hover { background: var(--clarity-white); border-color: var(--storm-cloud); }
+
+  /* Stats grid */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 22px; }
+  .stat {
+    background: var(--surface); padding: 16px 18px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .stat:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+  .stat-label { font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 6px; }
+  .stat-val { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
+  .stat-val small { font-size: 12px; color: var(--text-muted); font-weight: 500; margin-left: 4px; }
+
+  /* Tables */
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th {
+    text-align: right; padding: 12px 16px;
+    background: var(--clarity-white);
+    color: var(--text-muted);
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0;
+  }
+  th:first-child, td:first-child { text-align: left; }
+  td {
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--border);
+    text-align: right;
+    font-size: 13px;
+    color: var(--text);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: #FAFBFC; }
+  tr.total td {
+    background: var(--clarity-white);
+    font-weight: 700;
+    border-top: 2px solid var(--border-strong);
+    color: var(--mature-blue);
+  }
+  tr.total:hover td { background: var(--clarity-white); }
+  tr.forecast-row td { color: var(--forecast); }
+  tr.forecast-row td:first-child::before {
+    content: ''; display: inline-block;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--forecast); margin-right: 8px; vertical-align: middle;
+  }
+  td.label { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text); }
+  td.type-cell { text-align: left; font-size: 12px; color: var(--text-muted); }
+
+  /* Chart */
+  .chart-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; height: 420px;
+  }
+
+  /* Messages */
+  .msg {
+    padding: 12px 16px; font-size: 13px; margin-bottom: 16px;
+    border-radius: var(--radius-sm); border: 1px solid;
+    display: flex; align-items: flex-start; gap: 10px;
+  }
+  .msg::before {
+    content: '!'; display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+    font-size: 11px; font-weight: 700; margin-top: 1px;
+  }
+  .msg.warn { background: var(--warn-bg); border-color: #ffd9c2; color: #7a3a1a; }
+  .msg.warn::before { background: var(--light-orange); color: #fff; }
+  .msg.err { background: #fde8e3; border-color: #ffc7b8; color: #6a1c0a; }
+  .msg.err::before { background: var(--confident-orange); color: #fff; }
+
+  .download-row { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  .hidden { display: none !important; }
+
+  footer {
+    text-align: center; padding-top: 28px; margin-top: 32px;
+    border-top: 1px solid var(--border);
+    font-size: 12px; color: var(--text-subtle);
+  }
+
+  @media (max-width: 640px) {
+    .wrap { padding: 20px 16px 60px; }
+    .navbar { padding: 12px 16px; }
+    .card { padding: 18px; }
+    .page-title { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="brand">
+    <div class="brand-mark">i</div>
+    <span>Invoice Analyzer</span>
+  </div>
+  <span class="badge">v1.0</span>
+</nav>
+
+<div class="wrap">
+
+  <h1 class="page-title">Invoice Pivot &amp; Forecast</h1>
+  <p class="page-sub">Upload your billing CSV to generate a pivot table and an 8-month linear forecast.</p>
+
+  <!-- 1. Upload -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-left">
+        <span class="step-num">1</span>
+        <div>
+          <div class="card-title">Upload CSV</div>
+          <div class="card-sub">Your file is processed locally — nothing leaves your browser.</div>
+        </div>
+      </div>
+    </div>
+    <div class="drop" id="drop" role="button" tabindex="0">
+      <input type="file" id="file" accept=".csv" hidden />
+      <div class="drop-icon">↓</div>
+      <div class="drop-main">Drop your CSV here, or <span class="drop-link">click to browse</span></div>
+      <div class="drop-sub">Expected: fetch_billing_info_invoices*.csv</div>
+    </div>
+    <div class="file-info" id="fileInfo"></div>
+  </div>
+
+  <!-- 2. Pivot -->
+  <div class="card hidden" id="resultsSection">
+    <div class="card-head">
+      <div class="card-head-left">
+        <span class="step-num">2</span>
+        <div>
+          <div class="card-title">Pivot table</div>
+          <div class="card-sub">Sum of amount in merchant currency, by month and usage flag.</div>
+        </div>
+      </div>
+      <button class="primary" id="dlXlsx">↓ Download Excel</button>
+    </div>
+    <div id="messages"></div>
+    <div class="stats" id="stats"></div>
+    <div class="table-wrap"><table id="pivot"></table></div>
+  </div>
+
+  <!-- 3. Forecast -->
+  <div class="card hidden" id="forecastSection">
+    <div class="card-head">
+      <div class="card-head-left">
+        <span class="step-num">3</span>
+        <div>
+          <div class="card-title">Monthly forecast <span class="pill pill-true">true rows only</span></div>
+          <div class="card-sub">Linear trend projection based on historical monthly totals.</div>
+        </div>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="ctrl">
+        <label for="months">Forecast horizon (months)</label>
+        <input type="number" id="months" min="1" max="24" value="8" />
+      </div>
+      <button class="secondary" id="recalc">Recalculate</button>
+    </div>
+    <div id="forecastMsg" style="margin-top:16px;"></div>
+    <div id="forecastBody" class="hidden" style="margin-top:18px;">
+      <div class="chart-box"><canvas id="chart"></canvas></div>
+      <div class="table-wrap" style="margin-top:18px;"><table id="forecastTable"></table></div>
+    </div>
+  </div>
+
+  <footer>Built for the Account Management team · All processing happens in your browser</footer>
+</div>
+
+<script>
+'use strict';
+
+/* ---------- State ---------- */
+const state = {
+  rows: [],          // cleaned rows: {date, ym, amount, considered}
+  pivot: null,       // {months: [...], true: {ym: sum}, false: {ym: sum}, totals: {...}}
+  forecast: null,    // {history: [{ym,total}], forecast: [{ym,total}], slope, intercept}
+};
+
+/* ---------- Helpers ---------- */
+const fmtMoney = n => n == null || isNaN(n) ? '' :
+  new Intl.NumberFormat('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(n);
+const fmtMoney0 = n => n == null || isNaN(n) ? '' :
+  new Intl.NumberFormat('en-US', {maximumFractionDigits: 0}).format(n);
+
+function parseAmount(raw) {
+  if (raw == null) return NaN;
+  let s = String(raw).trim();
+  if (!s) return NaN;
+  // strip everything except digits, comma, dot, minus, spaces
+  // normalize: remove spaces (thousands separator), unify decimal
+  s = s.replace(/\s/g, '');
+  // If the value has both comma and dot, assume the LAST one is the decimal separator
+  const lastComma = s.lastIndexOf(',');
+  const lastDot = s.lastIndexOf('.');
+  if (lastComma !== -1 && lastDot !== -1) {
+    if (lastComma > lastDot) {
+      // comma is decimal -> remove dots, replace comma with dot
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else {
+      // dot is decimal -> remove commas
+      s = s.replace(/,/g, '');
+    }
+  } else if (lastComma !== -1) {
+    // only commas: ambiguous. If there's exactly one comma followed by 1-2 digits, treat as decimal
+    const after = s.length - lastComma - 1;
+    if (after === 1 || after === 2) {
+      s = s.replace(/,/g, m => m === ',' ? '.' : m);
+      // collapse multiple commas
+      s = s.replace(/\.(?=.*\.)/g, '');
+    } else {
+      s = s.replace(/,/g, '');
+    }
+  } else if (lastDot !== -1) {
+    // only dots: same logic — if exactly one dot with 1-2 trailing digits, decimal; else thousands
+    const after = s.length - lastDot - 1;
+    if (after === 1 || after === 2) {
+      // keep as is (decimal dot)
+    } else {
+      s = s.replace(/\./g, '');
+    }
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? NaN : n;
+}
+
+function parseDate(raw) {
+  if (!raw) return null;
+  let s = String(raw).trim();
+  if (!s) return null;
+  // Replace T with space; take the date portion if present
+  s = s.replace('T', ' ');
+  // try ISO-ish parse
+  const d = new Date(s);
+  if (isNaN(d.getTime())) {
+    // fallback: pull yyyy-mm-dd from the start
+    const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+    return null;
+  }
+  return d;
+}
+
+function ymKey(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+
+function ymAddMonths(ym, n) {
+  const [y,m] = ym.split('-').map(Number);
+  const d = new Date(y, m-1+n, 1);
+  return ymKey(d);
+}
+
+/* ---------- File handling ---------- */
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('file');
+const fileInfo = document.getElementById('fileInfo');
+
+['dragenter','dragover'].forEach(ev =>
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev =>
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => {
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+drop.addEventListener('click', () => fileInput.click());
+drop.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+});
+
+function handleFile(file) {
+  fileInfo.classList.add('show');
+  fileInfo.innerHTML = `<span class="filename">${file.name}</span><span class="meta">${(file.size/1024).toFixed(1)} KB · parsing…</span>`;
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: results => {
+      processRows(results.data, file.name);
+    },
+    error: err => {
+      fileInfo.innerHTML = `<span class="filename">Parse error</span><span class="meta">${err.message}</span>`;
+    }
+  });
+}
+
+function processRows(raw, filename) {
+  const dateCol = 'Invoice end date/generated date (date) (PST)';
+  const amountCol = 'Amount in Merchant Currency';
+  const consideredCol = 'Is Considered For Usage Calculation';
+
+  const rows = [];
+  let skipped = 0;
+  for (const r of raw) {
+    const d = parseDate(r[dateCol]);
+    const a = parseAmount(r[amountCol]);
+    if (!d || isNaN(a)) { skipped++; continue; }
+    const consideredRaw = String(r[consideredCol] ?? '').trim().toLowerCase();
+    const considered = consideredRaw === 'true';
+    rows.push({ date: d, ym: ymKey(d), amount: a, considered });
+  }
+  state.rows = rows;
+  fileInfo.innerHTML =
+    `<span class="filename">${filename}</span>` +
+    `<span class="meta">${rows.length.toLocaleString()} rows parsed · ${skipped} skipped</span>`;
+
+  buildPivot();
+  buildForecast();
+  document.getElementById('resultsSection').classList.remove('hidden');
+  document.getElementById('forecastSection').classList.remove('hidden');
+}
+
+/* ---------- Pivot ---------- */
+function buildPivot() {
+  const trueMap = {}, falseMap = {};
+  const monthSet = new Set();
+  for (const r of state.rows) {
+    monthSet.add(r.ym);
+    const tgt = r.considered ? trueMap : falseMap;
+    tgt[r.ym] = (tgt[r.ym] || 0) + r.amount;
+  }
+  const months = Array.from(monthSet).sort();
+  state.pivot = { months, true: trueMap, false: falseMap };
+  renderPivot();
+  renderStats();
+}
+
+function renderPivot() {
+  const { months, true: t, false: f } = state.pivot;
+  let totalT = 0, totalF = 0;
+  let html = `<thead><tr><th>Year-Month</th><th>True</th><th>False</th><th>Total</th></tr></thead><tbody>`;
+  for (const m of months) {
+    const vt = t[m] || 0; const vf = f[m] || 0;
+    totalT += vt; totalF += vf;
+    html += `<tr><td class="label">${m}</td><td>${fmtMoney(vt)}</td><td>${fmtMoney(vf)}</td><td>${fmtMoney(vt+vf)}</td></tr>`;
+  }
+  html += `<tr class="total"><td class="label">Grand total</td><td>${fmtMoney(totalT)}</td><td>${fmtMoney(totalF)}</td><td>${fmtMoney(totalT+totalF)}</td></tr>`;
+  html += `</tbody>`;
+  document.getElementById('pivot').innerHTML = html;
+}
+
+function renderStats() {
+  const { months, true: t, false: f } = state.pivot;
+  let sumT = 0, sumF = 0;
+  for (const m of months) { sumT += (t[m]||0); sumF += (f[m]||0); }
+  const avgT = months.length ? sumT / months.length : 0;
+  const html = `
+    <div class="stat"><div class="stat-label">Months covered</div><div class="stat-val">${months.length}</div></div>
+    <div class="stat"><div class="stat-label">Total invoiced (true)</div><div class="stat-val">${fmtMoney0(sumT)} <small>MC</small></div></div>
+    <div class="stat"><div class="stat-label">Total invoiced (false)</div><div class="stat-val">${fmtMoney0(sumF)} <small>MC</small></div></div>
+    <div class="stat"><div class="stat-label">Avg/month (true)</div><div class="stat-val">${fmtMoney0(avgT)} <small>MC</small></div></div>
+  `;
+  document.getElementById('stats').innerHTML = html;
+}
+
+/* ---------- Forecast (linear regression on monthly true totals) ---------- */
+function buildForecast() {
+  const horizon = Math.max(1, Math.min(24, parseInt(document.getElementById('months').value) || 8));
+  const { months, true: t } = state.pivot;
+  const history = months.map(m => ({ ym: m, total: t[m] || 0 }));
+  const msgBox = document.getElementById('forecastMsg');
+  const body = document.getElementById('forecastBody');
+
+  if (history.length < 12) {
+    msgBox.innerHTML = `<div class="msg warn">Need at least <strong>12 months</strong> of historical data to compute a forecast. Currently found: ${history.length} month(s).</div>`;
+    body.classList.add('hidden');
+    state.forecast = null;
+    return;
+  }
+  msgBox.innerHTML = '';
+
+  // Linear regression: x = month index (0..n-1), y = total
+  const n = history.length;
+  const xs = history.map((_,i) => i);
+  const ys = history.map(h => h.total);
+  const meanX = xs.reduce((a,b)=>a+b,0)/n;
+  const meanY = ys.reduce((a,b)=>a+b,0)/n;
+  let num = 0, den = 0;
+  for (let i=0;i<n;i++){ num += (xs[i]-meanX)*(ys[i]-meanY); den += (xs[i]-meanX)**2; }
+  const slope = den === 0 ? 0 : num/den;
+  const intercept = meanY - slope*meanX;
+
+  // R² for context
+  let ssRes = 0, ssTot = 0;
+  for (let i=0;i<n;i++){
+    const yhat = intercept + slope*xs[i];
+    ssRes += (ys[i]-yhat)**2;
+    ssTot += (ys[i]-meanY)**2;
+  }
+  const r2 = ssTot === 0 ? 0 : 1 - ssRes/ssTot;
+
+  const forecast = [];
+  let lastYm = history[history.length-1].ym;
+  for (let k=1; k<=horizon; k++){
+    const ym = ymAddMonths(lastYm, k);
+    const val = Math.max(0, intercept + slope*(n-1+k));
+    forecast.push({ ym, total: val });
+  }
+  state.forecast = { history, forecast, slope, intercept, r2 };
+  body.classList.remove('hidden');
+  renderForecastTable();
+  renderChart();
+}
+
+function renderForecastTable() {
+  const { history, forecast, slope, r2 } = state.forecast;
+  let html = `<thead><tr><th>Year-Month</th><th style="text-align:left">Type</th><th>Amount (MC)</th></tr></thead><tbody>`;
+  for (const h of history) {
+    html += `<tr><td class="label">${h.ym}</td><td class="type-cell">historical</td><td>${fmtMoney(h.total)}</td></tr>`;
+  }
+  for (const f of forecast) {
+    html += `<tr class="forecast-row"><td class="label">${f.ym}</td><td class="type-cell">forecast</td><td>${fmtMoney(f.total)}</td></tr>`;
+  }
+  html += `<tr class="total"><td class="label" colspan="2">Trend slope · R²</td><td>${fmtMoney(slope)} / month · ${r2.toFixed(3)}</td></tr>`;
+  html += `</tbody>`;
+  document.getElementById('forecastTable').innerHTML = html;
+}
+
+let chartInstance = null;
+function renderChart() {
+  const { history, forecast } = state.forecast;
+  const labels = [...history.map(h=>h.ym), ...forecast.map(f=>f.ym)];
+  const histData = [...history.map(h=>h.total), ...forecast.map(()=>null)];
+  const fcData   = [...history.map(()=>null), ...forecast.map(f=>f.total)];
+
+  // bridge: last historical point continues into forecast
+  fcData[history.length-1] = history[history.length-1].total;
+
+  if (chartInstance) chartInstance.destroy();
+  const ctx = document.getElementById('chart').getContext('2d');
+  chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Historical (true rows)',
+          data: histData,
+          borderColor: '#012A38',
+          backgroundColor: 'rgba(1, 42, 56, 0.08)',
+          borderWidth: 2.5,
+          tension: 0.25,
+          fill: true,
+          pointRadius: 3,
+          pointBackgroundColor: '#012A38',
+          spanGaps: false,
+        },
+        {
+          label: 'Forecast (linear trend)',
+          data: fcData,
+          borderColor: '#FF523B',
+          backgroundColor: 'rgba(255, 82, 59, 0.08)',
+          borderWidth: 2.5,
+          borderDash: [6,4],
+          tension: 0.15,
+          fill: true,
+          pointRadius: 3,
+          pointStyle: 'rectRot',
+          pointBackgroundColor: '#FF523B',
+          spanGaps: true,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            font: { family: 'Inter', size: 12, weight: '500' },
+            usePointStyle: true,
+            padding: 18,
+            color: '#4F6169',
+          },
+        },
+        tooltip: {
+          backgroundColor: '#012A38',
+          titleFont: { family: 'Inter', size: 12, weight: '600' },
+          bodyFont: { family: 'Inter', size: 13 },
+          padding: 12,
+          cornerRadius: 6,
+          callbacks: {
+            label: (c) => `${c.dataset.label}: ${fmtMoney(c.parsed.y)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(1, 42, 56, 0.05)' },
+          ticks: { font: { family: 'JetBrains Mono', size: 10 }, color: '#92A1A8', maxRotation: 45, minRotation: 45 },
+        },
+        y: {
+          grid: { color: 'rgba(1, 42, 56, 0.05)' },
+          ticks: { font: { family: 'JetBrains Mono', size: 10 }, color: '#92A1A8', callback: v => fmtMoney0(v) },
+        },
+      },
+    },
+  });
+}
+
+/* ---------- Excel export ---------- */
+document.getElementById('dlXlsx').addEventListener('click', () => {
+  if (!state.pivot) return;
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: Pivot
+  const pivotRows = [['Year-Month','True','False','Total']];
+  let tt = 0, tf = 0;
+  for (const m of state.pivot.months) {
+    const vt = state.pivot.true[m] || 0;
+    const vf = state.pivot.false[m] || 0;
+    pivotRows.push([m, vt, vf, vt+vf]);
+    tt += vt; tf += vf;
+  }
+  pivotRows.push(['Grand total', tt, tf, tt+tf]);
+  const ws1 = XLSX.utils.aoa_to_sheet(pivotRows);
+  ws1['!cols'] = [{wch:14},{wch:14},{wch:14},{wch:14}];
+  // format currency columns
+  const range = XLSX.utils.decode_range(ws1['!ref']);
+  for (let R = 1; R <= range.e.r; R++) {
+    for (let C = 1; C <= 3; C++) {
+      const ref = XLSX.utils.encode_cell({r:R,c:C});
+      if (ws1[ref]) ws1[ref].z = '#,##0.00';
+    }
+  }
+  XLSX.utils.book_append_sheet(wb, ws1, 'Pivot');
+
+  // Sheet 2: Forecast
+  if (state.forecast) {
+    const fcRows = [['Year-Month','Type','Amount']];
+    state.forecast.history.forEach(h => fcRows.push([h.ym, 'historical', h.total]));
+    state.forecast.forecast.forEach(f => fcRows.push([f.ym, 'forecast', f.total]));
+    fcRows.push([]);
+    fcRows.push(['Slope (per month)', '', state.forecast.slope]);
+    fcRows.push(['Intercept', '', state.forecast.intercept]);
+    fcRows.push(['R²', '', state.forecast.r2]);
+    const ws2 = XLSX.utils.aoa_to_sheet(fcRows);
+    ws2['!cols'] = [{wch:14},{wch:14},{wch:16}];
+    const r2 = XLSX.utils.decode_range(ws2['!ref']);
+    for (let R = 1; R <= r2.e.r; R++) {
+      const ref = XLSX.utils.encode_cell({r:R,c:2});
+      if (ws2[ref]) ws2[ref].z = '#,##0.00';
+    }
+    XLSX.utils.book_append_sheet(wb, ws2, 'Forecast');
+  }
+
+  // Sheet 3: Cleaned rows (the parsed/normalized data)
+  const cleanedRows = [['Date','Year-Month','Amount (Merchant Currency)','Considered']];
+  state.rows.forEach(r => {
+    cleanedRows.push([
+      r.date.toISOString().slice(0,10),
+      r.ym,
+      r.amount,
+      r.considered ? 'TRUE' : 'FALSE',
+    ]);
+  });
+  const ws3 = XLSX.utils.aoa_to_sheet(cleanedRows);
+  ws3['!cols'] = [{wch:12},{wch:12},{wch:18},{wch:12}];
+  const r3 = XLSX.utils.decode_range(ws3['!ref']);
+  for (let R = 1; R <= r3.e.r; R++) {
+    const ref = XLSX.utils.encode_cell({r:R,c:2});
+    if (ws3[ref]) ws3[ref].z = '#,##0.00';
+    const dref = XLSX.utils.encode_cell({r:R,c:0});
+    if (ws3[dref]) ws3[dref].z = 'yyyy-mm-dd';
+  }
+  XLSX.utils.book_append_sheet(wb, ws3, 'Cleaned data');
+
+  const today = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `invoice-pivot-forecast_${today}.xlsx`);
+});
+
+document.getElementById('recalc').addEventListener('click', buildForecast);
+document.getElementById('months').addEventListener('change', buildForecast);
+</script>
+</body>
+</html>
