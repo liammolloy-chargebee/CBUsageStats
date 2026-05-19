@@ -72,6 +72,7 @@
   }
   /* Dropzone */
   .drop {
+    display: block; width: 100%;
     border: 2px dashed var(--rule); background: var(--paper-warm);
     padding: 44px 28px; text-align: center; cursor: pointer;
     transition: all 0.18s ease; position: relative;
@@ -172,12 +173,12 @@
       <span class="section-num">01</span>
       <h2>Upload <em>CSV</em></h2>
     </div>
-    <label class="drop" id="drop">
-      <input type="file" id="file" accept=".csv" />
+    <div class="drop" id="drop" role="button" tabindex="0">
+      <input type="file" id="file" accept=".csv" hidden />
       <div class="drop-icon">↓</div>
       <div class="drop-main">Drop your invoices CSV here, or click to browse</div>
       <div class="drop-sub">Expected: fetch_billing_info_invoices*.csv</div>
-    </label>
+    </div>
     <div class="file-info" id="fileInfo"></div>
   </section>
 
@@ -313,6 +314,10 @@ const fileInfo = document.getElementById('fileInfo');
   drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', e => {
   if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+drop.addEventListener('click', () => fileInput.click());
+drop.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
 });
 fileInput.addEventListener('change', e => {
   if (e.target.files[0]) handleFile(e.target.files[0]);
