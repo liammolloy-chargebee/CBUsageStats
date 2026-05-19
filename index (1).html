@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Invoice Pivot &amp; Forecast</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500;600&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --ink: #0f1419;
+    --paper: #f5f1e8;
+    --paper-warm: #ebe4d1;
+    --rule: #1a1f24;
+    --accent: #c8543d;
+    --accent-soft: #e8a89a;
+    --true: #2b5d3f;
+    --false: #b8884a;
+    --forecast: #6b5fa3;
+    --muted: #6b6358;
+    --shadow: 0 1px 0 rgba(15,20,25,0.08), 0 4px 24px rgba(15,20,25,0.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Inter Tight', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    background-image:
+      radial-gradient(at 12% 8%, rgba(200,84,61,0.06) 0px, transparent 50%),
+      radial-gradient(at 88% 92%, rgba(107,95,163,0.05) 0px, transparent 50%);
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 48px 32px 80px; }
+  header {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    border-bottom: 2px solid var(--rule); padding-bottom: 18px; margin-bottom: 36px;
+    gap: 24px; flex-wrap: wrap;
+  }
+  h1 {
+    font-family: 'Fraunces', serif; font-weight: 600;
+    font-size: clamp(32px, 4.5vw, 52px); line-height: 1; letter-spacing: -0.02em;
+    font-variation-settings: "opsz" 96;
+  }
+  h1 em { font-style: italic; font-weight: 400; color: var(--accent); }
+  .tag {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted);
+  }
+  h2 {
+    font-family: 'Fraunces', serif; font-weight: 500;
+    font-size: 24px; letter-spacing: -0.01em; margin-bottom: 4px;
+  }
+  h2 em { font-style: italic; color: var(--accent); font-weight: 400; }
+  section { margin-bottom: 44px; }
+  .section-head {
+    display: flex; align-items: baseline; gap: 14px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--rule); padding-bottom: 10px;
+  }
+  .section-num {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    color: var(--muted); letter-spacing: 0.1em;
+  }
+  /* Dropzone */
+  .drop {
+    border: 2px dashed var(--rule); background: var(--paper-warm);
+    padding: 44px 28px; text-align: center; cursor: pointer;
+    transition: all 0.18s ease; position: relative;
+  }
+  .drop:hover, .drop.over {
+    background: #f0e9d4; border-color: var(--accent); transform: translateY(-1px);
+  }
+  .drop input { display: none; }
+  .drop-icon { font-family: 'Fraunces', serif; font-size: 40px; font-style: italic; color: var(--accent); margin-bottom: 8px; }
+  .drop-main { font-size: 17px; font-weight: 500; }
+  .drop-sub { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); margin-top: 6px; letter-spacing: 0.04em; }
+  .file-info {
+    margin-top: 16px; padding: 12px 16px; background: var(--ink); color: var(--paper);
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; display: none;
+  }
+  .file-info.show { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  /* Controls */
+  .controls {
+    display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-end;
+    background: var(--paper-warm); padding: 20px 24px; border: 1px solid var(--rule);
+  }
+  .ctrl label {
+    display: block; font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 6px;
+  }
+  .ctrl input[type="number"] {
+    font-family: 'JetBrains Mono', monospace; font-size: 16px;
+    border: 1px solid var(--rule); background: var(--paper);
+    padding: 8px 12px; width: 90px; color: var(--ink);
+  }
+  button.primary {
+    font-family: 'Inter Tight', sans-serif; font-weight: 600; font-size: 14px;
+    background: var(--ink); color: var(--paper); border: none;
+    padding: 12px 22px; cursor: pointer; letter-spacing: 0.02em;
+    transition: all 0.15s ease;
+  }
+  button.primary:hover { background: var(--accent); }
+  button.primary:disabled { opacity: 0.4; cursor: not-allowed; background: var(--muted); }
+  /* Tables */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--rule); background: #fff; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th {
+    text-align: right; padding: 11px 14px; background: var(--ink); color: var(--paper);
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.1em; font-weight: 500;
+    border-right: 1px solid #2a3038;
+    position: sticky; top: 0;
+  }
+  th:first-child, td:first-child { text-align: left; }
+  th:last-child { border-right: none; }
+  td {
+    padding: 9px 14px; border-bottom: 1px solid #eee9da; text-align: right;
+    font-size: 14px;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr.total td { background: var(--paper-warm); font-weight: 600; border-top: 2px solid var(--rule); }
+  tr.forecast-row td { color: var(--forecast); font-style: italic; }
+  td.label { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-style: normal !important; }
+  .pill {
+    display: inline-block; padding: 2px 8px; font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+    background: var(--accent-soft); color: var(--ink); margin-left: 8px;
+  }
+  /* Stats */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .stat { background: #fff; padding: 16px 18px; border: 1px solid var(--rule); }
+  .stat-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }
+  .stat-val { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 500; margin-top: 4px; letter-spacing: -0.01em; }
+  .stat-val small { font-size: 14px; color: var(--muted); font-weight: 400; }
+  /* Chart */
+  .chart-box { background: #fff; border: 1px solid var(--rule); padding: 20px; height: 420px; }
+  /* Messages */
+  .msg { padding: 14px 18px; font-family: 'JetBrains Mono', monospace; font-size: 13px; margin-bottom: 16px; border-left: 3px solid; }
+  .msg.warn { background: #fdf3e6; border-color: var(--false); color: #5c441f; }
+  .msg.err  { background: #fbe8e3; border-color: var(--accent); color: #5a1f12; }
+  .hidden { display: none !important; }
+  footer {
+    border-top: 1px solid var(--rule); padding-top: 18px; margin-top: 48px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted);
+    text-align: center; letter-spacing: 0.05em;
+  }
+  .download-row { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="tag">Account Manager · Internal Tool</div>
+      <h1>Invoice Pivot <em>&amp;</em> Forecast</h1>
+    </div>
+    <div class="tag">v1.0 · CSV → XLSX</div>
+  </header>
+
+  <!-- 1. Upload -->
+  <section>
+    <div class="section-head">
+      <span class="section-num">01</span>
+      <h2>Upload <em>CSV</em></h2>
+    </div>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept=".csv" />
+      <div class="drop-icon">↓</div>
+      <div class="drop-main">Drop your invoices CSV here, or click to browse</div>
+      <div class="drop-sub">Expected: fetch_billing_info_invoices*.csv</div>
+    </label>
+    <div class="file-info" id="fileInfo"></div>
+  </section>
+
+  <!-- 2. Controls + Results -->
+  <section id="resultsSection" class="hidden">
+    <div class="section-head">
+      <span class="section-num">02</span>
+      <h2>Pivot <em>table</em> <span class="pill">Sum of amount in merchant ccy</span></h2>
+    </div>
+    <div id="messages"></div>
+    <div class="stats" id="stats"></div>
+    <div class="table-wrap"><table id="pivot"></table></div>
+    <div class="download-row">
+      <button class="primary" id="dlXlsx">↓ Download Excel (.xlsx)</button>
+    </div>
+  </section>
+
+  <!-- 3. Forecast -->
+  <section id="forecastSection" class="hidden">
+    <div class="section-head">
+      <span class="section-num">03</span>
+      <h2>Forecast <em>— linear trend</em> <span class="pill">true rows only</span></h2>
+    </div>
+    <div class="controls">
+      <div class="ctrl">
+        <label for="months">Forecast horizon (months)</label>
+        <input type="number" id="months" min="1" max="24" value="8" />
+      </div>
+      <button class="primary" id="recalc">Recalculate</button>
+    </div>
+    <div id="forecastMsg" style="margin-top:16px;"></div>
+    <div id="forecastBody" class="hidden" style="margin-top:18px;">
+      <div class="chart-box"><canvas id="chart"></canvas></div>
+      <div class="table-wrap" style="margin-top:18px;"><table id="forecastTable"></table></div>
+    </div>
+  </section>
+
+  <footer>Built for the Account Management team · All processing happens in your browser</footer>
+</div>
+
+<script>
+'use strict';
+
+/* ---------- State ---------- */
+const state = {
+  rows: [],          // cleaned rows: {date, ym, amount, considered}
+  pivot: null,       // {months: [...], true: {ym: sum}, false: {ym: sum}, totals: {...}}
+  forecast: null,    // {history: [{ym,total}], forecast: [{ym,total}], slope, intercept}
+};
+
+/* ---------- Helpers ---------- */
+const fmtMoney = n => n == null || isNaN(n) ? '' :
+  new Intl.NumberFormat('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(n);
+const fmtMoney0 = n => n == null || isNaN(n) ? '' :
+  new Intl.NumberFormat('en-US', {maximumFractionDigits: 0}).format(n);
+
+function parseAmount(raw) {
+  if (raw == null) return NaN;
+  let s = String(raw).trim();
+  if (!s) return NaN;
+  // strip everything except digits, comma, dot, minus, spaces
+  // normalize: remove spaces (thousands separator), unify decimal
+  s = s.replace(/\s/g, '');
+  // If the value has both comma and dot, assume the LAST one is the decimal separator
+  const lastComma = s.lastIndexOf(',');
+  const lastDot = s.lastIndexOf('.');
+  if (lastComma !== -1 && lastDot !== -1) {
+    if (lastComma > lastDot) {
+      // comma is decimal -> remove dots, replace comma with dot
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else {
+      // dot is decimal -> remove commas
+      s = s.replace(/,/g, '');
+    }
+  } else if (lastComma !== -1) {
+    // only commas: ambiguous. If there's exactly one comma followed by 1-2 digits, treat as decimal
+    const after = s.length - lastComma - 1;
+    if (after === 1 || after === 2) {
+      s = s.replace(/,/g, m => m === ',' ? '.' : m);
+      // collapse multiple commas
+      s = s.replace(/\.(?=.*\.)/g, '');
+    } else {
+      s = s.replace(/,/g, '');
+    }
+  } else if (lastDot !== -1) {
+    // only dots: same logic — if exactly one dot with 1-2 trailing digits, decimal; else thousands
+    const after = s.length - lastDot - 1;
+    if (after === 1 || after === 2) {
+      // keep as is (decimal dot)
+    } else {
+      s = s.replace(/\./g, '');
+    }
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? NaN : n;
+}
+
+function parseDate(raw) {
+  if (!raw) return null;
+  let s = String(raw).trim();
+  if (!s) return null;
+  // Replace T with space; take the date portion if present
+  s = s.replace('T', ' ');
+  // try ISO-ish parse
+  const d = new Date(s);
+  if (isNaN(d.getTime())) {
+    // fallback: pull yyyy-mm-dd from the start
+    const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+    return null;
+  }
+  return d;
+}
+
+function ymKey(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+
+function ymAddMonths(ym, n) {
+  const [y,m] = ym.split('-').map(Number);
+  const d = new Date(y, m-1+n, 1);
+  return ymKey(d);
+}
+
+/* ---------- File handling ---------- */
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('file');
+const fileInfo = document.getElementById('fileInfo');
+
+['dragenter','dragover'].forEach(ev =>
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev =>
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => {
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+});
+
+function handleFile(file) {
+  fileInfo.classList.add('show');
+  fileInfo.innerHTML = `<span>FILE: ${file.name}</span><span>${(file.size/1024).toFixed(1)} KB · parsing…</span>`;
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: results => {
+      processRows(results.data, file.name);
+    },
+    error: err => {
+      fileInfo.innerHTML = `<span style="color:#e8a89a">PARSE ERROR: ${err.message}</span>`;
+    }
+  });
+}
+
+function processRows(raw, filename) {
+  const dateCol = 'Invoice end date/generated date (date) (PST)';
+  const amountCol = 'Amount in Merchant Currency';
+  const consideredCol = 'Is Considered For Usage Calculation';
+
+  const rows = [];
+  let skipped = 0;
+  for (const r of raw) {
+    const d = parseDate(r[dateCol]);
+    const a = parseAmount(r[amountCol]);
+    if (!d || isNaN(a)) { skipped++; continue; }
+    const consideredRaw = String(r[consideredCol] ?? '').trim().toLowerCase();
+    const considered = consideredRaw === 'true';
+    rows.push({ date: d, ym: ymKey(d), amount: a, considered });
+  }
+  state.rows = rows;
+  fileInfo.innerHTML =
+    `<span>FILE: ${filename}</span>` +
+    `<span>${rows.length} rows parsed · ${skipped} skipped</span>`;
+
+  buildPivot();
+  buildForecast();
+  document.getElementById('resultsSection').classList.remove('hidden');
+  document.getElementById('forecastSection').classList.remove('hidden');
+}
+
+/* ---------- Pivot ---------- */
+function buildPivot() {
+  const trueMap = {}, falseMap = {};
+  const monthSet = new Set();
+  for (const r of state.rows) {
+    monthSet.add(r.ym);
+    const tgt = r.considered ? trueMap : falseMap;
+    tgt[r.ym] = (tgt[r.ym] || 0) + r.amount;
+  }
+  const months = Array.from(monthSet).sort();
+  state.pivot = { months, true: trueMap, false: falseMap };
+  renderPivot();
+  renderStats();
+}
+
+function renderPivot() {
+  const { months, true: t, false: f } = state.pivot;
+  let totalT = 0, totalF = 0;
+  let html = `<thead><tr><th>Year-Month</th><th>True</th><th>False</th><th>Total</th></tr></thead><tbody>`;
+  for (const m of months) {
+    const vt = t[m] || 0; const vf = f[m] || 0;
+    totalT += vt; totalF += vf;
+    html += `<tr><td class="label">${m}</td><td>${fmtMoney(vt)}</td><td>${fmtMoney(vf)}</td><td>${fmtMoney(vt+vf)}</td></tr>`;
+  }
+  html += `<tr class="total"><td class="label">Grand total</td><td>${fmtMoney(totalT)}</td><td>${fmtMoney(totalF)}</td><td>${fmtMoney(totalT+totalF)}</td></tr>`;
+  html += `</tbody>`;
+  document.getElementById('pivot').innerHTML = html;
+}
+
+function renderStats() {
+  const { months, true: t, false: f } = state.pivot;
+  let sumT = 0, sumF = 0;
+  for (const m of months) { sumT += (t[m]||0); sumF += (f[m]||0); }
+  const avgT = months.length ? sumT / months.length : 0;
+  const html = `
+    <div class="stat"><div class="stat-label">Months covered</div><div class="stat-val">${months.length}</div></div>
+    <div class="stat"><div class="stat-label">Total invoiced (true)</div><div class="stat-val">${fmtMoney0(sumT)} <small>MC</small></div></div>
+    <div class="stat"><div class="stat-label">Total invoiced (false)</div><div class="stat-val">${fmtMoney0(sumF)} <small>MC</small></div></div>
+    <div class="stat"><div class="stat-label">Avg/month (true)</div><div class="stat-val">${fmtMoney0(avgT)} <small>MC</small></div></div>
+  `;
+  document.getElementById('stats').innerHTML = html;
+}
+
+/* ---------- Forecast (linear regression on monthly true totals) ---------- */
+function buildForecast() {
+  const horizon = Math.max(1, Math.min(24, parseInt(document.getElementById('months').value) || 8));
+  const { months, true: t } = state.pivot;
+  const history = months.map(m => ({ ym: m, total: t[m] || 0 }));
+  const msgBox = document.getElementById('forecastMsg');
+  const body = document.getElementById('forecastBody');
+
+  if (history.length < 12) {
+    msgBox.innerHTML = `<div class="msg warn">Need at least <strong>12 months</strong> of historical data to compute a forecast. Currently found: ${history.length} month(s).</div>`;
+    body.classList.add('hidden');
+    state.forecast = null;
+    return;
+  }
+  msgBox.innerHTML = '';
+
+  // Linear regression: x = month index (0..n-1), y = total
+  const n = history.length;
+  const xs = history.map((_,i) => i);
+  const ys = history.map(h => h.total);
+  const meanX = xs.reduce((a,b)=>a+b,0)/n;
+  const meanY = ys.reduce((a,b)=>a+b,0)/n;
+  let num = 0, den = 0;
+  for (let i=0;i<n;i++){ num += (xs[i]-meanX)*(ys[i]-meanY); den += (xs[i]-meanX)**2; }
+  const slope = den === 0 ? 0 : num/den;
+  const intercept = meanY - slope*meanX;
+
+  // R² for context
+  let ssRes = 0, ssTot = 0;
+  for (let i=0;i<n;i++){
+    const yhat = intercept + slope*xs[i];
+    ssRes += (ys[i]-yhat)**2;
+    ssTot += (ys[i]-meanY)**2;
+  }
+  const r2 = ssTot === 0 ? 0 : 1 - ssRes/ssTot;
+
+  const forecast = [];
+  let lastYm = history[history.length-1].ym;
+  for (let k=1; k<=horizon; k++){
+    const ym = ymAddMonths(lastYm, k);
+    const val = Math.max(0, intercept + slope*(n-1+k));
+    forecast.push({ ym, total: val });
+  }
+  state.forecast = { history, forecast, slope, intercept, r2 };
+  body.classList.remove('hidden');
+  renderForecastTable();
+  renderChart();
+}
+
+function renderForecastTable() {
+  const { history, forecast, slope, r2 } = state.forecast;
+  let html = `<thead><tr><th>Year-Month</th><th>Type</th><th>Amount (MC)</th></tr></thead><tbody>`;
+  for (const h of history) {
+    html += `<tr><td class="label">${h.ym}</td><td style="text-align:left;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">historical</td><td>${fmtMoney(h.total)}</td></tr>`;
+  }
+  for (const f of forecast) {
+    html += `<tr class="forecast-row"><td class="label">${f.ym}</td><td style="text-align:left;font-family:'JetBrains Mono',monospace;font-size:12px">forecast</td><td>${fmtMoney(f.total)}</td></tr>`;
+  }
+  html += `<tr class="total"><td class="label" colspan="2">Trend slope · R²</td><td>${fmtMoney(slope)} / month · ${r2.toFixed(3)}</td></tr>`;
+  html += `</tbody>`;
+  document.getElementById('forecastTable').innerHTML = html;
+}
+
+let chartInstance = null;
+function renderChart() {
+  const { history, forecast } = state.forecast;
+  const labels = [...history.map(h=>h.ym), ...forecast.map(f=>f.ym)];
+  const histData = [...history.map(h=>h.total), ...forecast.map(()=>null)];
+  const fcData   = [...history.map(()=>null), ...forecast.map(f=>f.total)];
+
+  // bridge: last historical point continues into forecast
+  fcData[history.length-1] = history[history.length-1].total;
+
+  if (chartInstance) chartInstance.destroy();
+  const ctx = document.getElementById('chart').getContext('2d');
+  chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Historical (true rows)',
+          data: histData,
+          borderColor: '#2b5d3f',
+          backgroundColor: 'rgba(43,93,63,0.08)',
+          borderWidth: 2.5,
+          tension: 0.25,
+          fill: true,
+          pointRadius: 3,
+          pointBackgroundColor: '#2b5d3f',
+          spanGaps: false,
+        },
+        {
+          label: 'Forecast (linear trend)',
+          data: fcData,
+          borderColor: '#6b5fa3',
+          backgroundColor: 'rgba(107,95,163,0.06)',
+          borderWidth: 2.5,
+          borderDash: [6,4],
+          tension: 0.15,
+          fill: true,
+          pointRadius: 3,
+          pointStyle: 'rectRot',
+          pointBackgroundColor: '#6b5fa3',
+          spanGaps: true,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            font: { family: 'JetBrains Mono', size: 11 },
+            usePointStyle: true,
+            padding: 18,
+          },
+        },
+        tooltip: {
+          backgroundColor: '#0f1419',
+          titleFont: { family: 'JetBrains Mono', size: 12 },
+          bodyFont: { family: 'Inter Tight', size: 13 },
+          padding: 12,
+          callbacks: {
+            label: (c) => `${c.dataset.label}: ${fmtMoney(c.parsed.y)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(15,20,25,0.06)' },
+          ticks: { font: { family: 'JetBrains Mono', size: 10 }, maxRotation: 45, minRotation: 45 },
+        },
+        y: {
+          grid: { color: 'rgba(15,20,25,0.06)' },
+          ticks: { font: { family: 'JetBrains Mono', size: 10 }, callback: v => fmtMoney0(v) },
+        },
+      },
+    },
+  });
+}
+
+/* ---------- Excel export ---------- */
+document.getElementById('dlXlsx').addEventListener('click', () => {
+  if (!state.pivot) return;
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: Pivot
+  const pivotRows = [['Year-Month','True','False','Total']];
+  let tt = 0, tf = 0;
+  for (const m of state.pivot.months) {
+    const vt = state.pivot.true[m] || 0;
+    const vf = state.pivot.false[m] || 0;
+    pivotRows.push([m, vt, vf, vt+vf]);
+    tt += vt; tf += vf;
+  }
+  pivotRows.push(['Grand total', tt, tf, tt+tf]);
+  const ws1 = XLSX.utils.aoa_to_sheet(pivotRows);
+  ws1['!cols'] = [{wch:14},{wch:14},{wch:14},{wch:14}];
+  // format currency columns
+  const range = XLSX.utils.decode_range(ws1['!ref']);
+  for (let R = 1; R <= range.e.r; R++) {
+    for (let C = 1; C <= 3; C++) {
+      const ref = XLSX.utils.encode_cell({r:R,c:C});
+      if (ws1[ref]) ws1[ref].z = '#,##0.00';
+    }
+  }
+  XLSX.utils.book_append_sheet(wb, ws1, 'Pivot');
+
+  // Sheet 2: Forecast
+  if (state.forecast) {
+    const fcRows = [['Year-Month','Type','Amount']];
+    state.forecast.history.forEach(h => fcRows.push([h.ym, 'historical', h.total]));
+    state.forecast.forecast.forEach(f => fcRows.push([f.ym, 'forecast', f.total]));
+    fcRows.push([]);
+    fcRows.push(['Slope (per month)', '', state.forecast.slope]);
+    fcRows.push(['Intercept', '', state.forecast.intercept]);
+    fcRows.push(['R²', '', state.forecast.r2]);
+    const ws2 = XLSX.utils.aoa_to_sheet(fcRows);
+    ws2['!cols'] = [{wch:14},{wch:14},{wch:16}];
+    const r2 = XLSX.utils.decode_range(ws2['!ref']);
+    for (let R = 1; R <= r2.e.r; R++) {
+      const ref = XLSX.utils.encode_cell({r:R,c:2});
+      if (ws2[ref]) ws2[ref].z = '#,##0.00';
+    }
+    XLSX.utils.book_append_sheet(wb, ws2, 'Forecast');
+  }
+
+  // Sheet 3: Cleaned rows (the parsed/normalized data)
+  const cleanedRows = [['Date','Year-Month','Amount (Merchant Currency)','Considered']];
+  state.rows.forEach(r => {
+    cleanedRows.push([
+      r.date.toISOString().slice(0,10),
+      r.ym,
+      r.amount,
+      r.considered ? 'TRUE' : 'FALSE',
+    ]);
+  });
+  const ws3 = XLSX.utils.aoa_to_sheet(cleanedRows);
+  ws3['!cols'] = [{wch:12},{wch:12},{wch:18},{wch:12}];
+  const r3 = XLSX.utils.decode_range(ws3['!ref']);
+  for (let R = 1; R <= r3.e.r; R++) {
+    const ref = XLSX.utils.encode_cell({r:R,c:2});
+    if (ws3[ref]) ws3[ref].z = '#,##0.00';
+    const dref = XLSX.utils.encode_cell({r:R,c:0});
+    if (ws3[dref]) ws3[dref].z = 'yyyy-mm-dd';
+  }
+  XLSX.utils.book_append_sheet(wb, ws3, 'Cleaned data');
+
+  const today = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `invoice-pivot-forecast_${today}.xlsx`);
+});
+
+document.getElementById('recalc').addEventListener('click', buildForecast);
+document.getElementById('months').addEventListener('change', buildForecast);
+</script>
+</body>
+</html>
