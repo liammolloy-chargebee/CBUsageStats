@@ -491,6 +491,14 @@
         <label for="threshold">Invoicing threshold (optional)</label>
         <input type="number" id="threshold" min="0" step="1000" placeholder="e.g. 50000" />
       </div>
+      <div class="ctrl">
+        <label for="contractStart">Contract start</label>
+        <input type="date" id="contractStart" />
+      </div>
+      <div class="ctrl">
+        <label for="contractEnd">Contract end</label>
+        <input type="date" id="contractEnd" />
+      </div>
       <button class="secondary" id="recalc">Recalculate</button>
     </div>
     <div id="forecastMsg" style="margin-top:16px;"></div>
@@ -971,30 +979,55 @@ function renderForecastTable() {
   const threshold = thresholdRaw === '' ? null : parseFloat(thresholdRaw);
   const hasThreshold = threshold !== null && !isNaN(threshold) && threshold > 0;
 
-  // Combine for unified cumulative calculation
+  // Contract window (uses YYYY-MM comparison so a date anywhere in the month counts that month in)
+  const contractStartRaw = document.getElementById('contractStart').value;
+  const contractEndRaw = document.getElementById('contractEnd').value;
+  const contractStartYm = contractStartRaw ? contractStartRaw.slice(0,7) : null;
+  const contractEndYm = contractEndRaw ? contractEndRaw.slice(0,7) : null;
+  const hasContract = !!(contractStartYm && contractEndYm);
+
+  // Combine all rows
   const all = [
     ...history.map(h => ({ ...h, type: 'historical' })),
     ...forecast.map(f => ({ ...f, type: 'forecast' })),
   ];
 
-  // Walk through, accumulate, and find threshold-cross index
+  // Walk through, build BOTH cumulatives, and find threshold-cross index
+  // - cumulative: from data start, always
+  // - contractCumulative: only counts months inside the contract window (null otherwise)
+  // - threshold is checked against contractCumulative if a window is set, else cumulative
   let cum = 0;
+  let contractCum = 0;
   let crossIdx = -1;
   const rowsData = all.map((row, i) => {
-    const prevCum = cum;
     cum += row.total;
-    if (hasThreshold && crossIdx === -1 && prevCum < threshold && cum >= threshold) {
-      crossIdx = i;
+    let contractCumVal = null;
+    let inWindow = false;
+    if (hasContract && row.ym >= contractStartYm && row.ym <= contractEndYm) {
+      inWindow = true;
+      const prevContractCum = contractCum;
+      contractCum += row.total;
+      contractCumVal = contractCum;
+      if (hasThreshold && crossIdx === -1 && prevContractCum < threshold && contractCum >= threshold) {
+        crossIdx = i;
+      }
+    } else if (!hasContract && hasThreshold && crossIdx === -1) {
+      // No window set: check the lifetime cumulative
+      const prevCum = cum - row.total;
+      if (prevCum < threshold && cum >= threshold) crossIdx = i;
     }
-    return { ...row, cumulative: cum, prevCumulative: prevCum };
+    return { ...row, cumulative: cum, contractCumulative: contractCumVal, inWindow };
   });
 
+  // Build header (4 columns by default, 5 if contract window is set)
   let html = `<thead><tr>
     <th>Year-Month</th>
     <th style="text-align:left">Type</th>
     <th>Monthly (MC)</th>
-    <th>Cumulative (MC)</th>
-  </tr></thead><tbody>`;
+    <th>Cumulative (MC)</th>`;
+  if (hasContract) html += `<th>Contract-period cumulative (MC)</th>`;
+  html += `</tr></thead><tbody>`;
+
   for (let i = 0; i < rowsData.length; i++) {
     const row = rowsData[i];
     const isForecast = row.type === 'forecast';
@@ -1007,37 +1040,50 @@ function renderForecastTable() {
       <td class="label">${row.ym}${badge}</td>
       <td class="type-cell">${row.type}</td>
       <td>${fmtMoney(row.total)}</td>
-      <td>${fmtMoney(row.cumulative)}</td>
-    </tr>`;
+      <td>${fmtMoney(row.cumulative)}</td>`;
+    if (hasContract) {
+      html += `<td>${row.contractCumulative === null ? '—' : fmtMoney(row.contractCumulative)}</td>`;
+    }
+    html += `</tr>`;
   }
+  const totalCols = hasContract ? 5 : 4;
   html += `<tr class="total">
     <td class="label" colspan="2">Trend slope · R²</td>
-    <td colspan="2">${fmtMoney(slope)} / month · ${r2.toFixed(3)}</td>
+    <td colspan="${totalCols - 2}">${fmtMoney(slope)} / month · ${r2.toFixed(3)}</td>
   </tr>`;
   html += `</tbody>`;
   document.getElementById('forecastTable').innerHTML = html;
 
-  // Threshold summary box below chart
-  renderThresholdSummary(hasThreshold, threshold, rowsData, crossIdx);
+  renderThresholdSummary(hasThreshold, threshold, rowsData, crossIdx, hasContract, contractStartYm, contractEndYm);
 }
 
-function renderThresholdSummary(hasThreshold, threshold, rowsData, crossIdx) {
+function renderThresholdSummary(hasThreshold, threshold, rowsData, crossIdx, hasContract, startYm, endYm) {
   const box = document.getElementById('thresholdSummary');
   if (!hasThreshold) { box.innerHTML = ''; return; }
 
-  const finalCum = rowsData[rowsData.length - 1].cumulative;
-  const currentCum = rowsData.filter(r => r.type === 'historical').slice(-1)[0]?.cumulative || 0;
+  // Pick which cumulative track we're checking against
+  const trackLabel = hasContract ? 'Contract-period cumulative' : 'Cumulative';
+  const windowSuffix = hasContract ? ` within contract window <strong>${startYm} → ${endYm}</strong>` : '';
+  const valueOf = row => hasContract ? (row.contractCumulative || 0) : row.cumulative;
+
+  // Final value at end of horizon on the chosen track
+  const finalVal = hasContract
+    ? Math.max(0, ...rowsData.filter(r => r.contractCumulative !== null).map(r => r.contractCumulative))
+    : rowsData[rowsData.length - 1].cumulative;
+
+  // Current value = last historical row's chosen track
+  const lastHist = [...rowsData].reverse().find(r => r.type === 'historical');
+  const currentVal = lastHist ? valueOf(lastHist) : 0;
 
   if (crossIdx === -1) {
-    // Not crossing in the visible horizon
-    const remaining = threshold - finalCum;
+    const remaining = threshold - finalVal;
     box.className = 'threshold-summary cleared';
     box.innerHTML = `
       <span>✓</span>
       <div>
-        Threshold of <strong>${fmtMoney(threshold)}</strong> not reached within the visible horizon.
-        Current cumulative: <strong>${fmtMoney(currentCum)}</strong> ·
-        End-of-forecast cumulative: <strong>${fmtMoney(finalCum)}</strong>
+        Threshold of <strong>${fmtMoney(threshold)}</strong> not reached${windowSuffix}.
+        ${trackLabel} at last historical month: <strong>${fmtMoney(currentVal)}</strong> ·
+        end of horizon: <strong>${fmtMoney(finalVal)}</strong>
         (still <strong>${fmtMoney(remaining)}</strong> below).
       </div>
     `;
@@ -1045,14 +1091,15 @@ function renderThresholdSummary(hasThreshold, threshold, rowsData, crossIdx) {
     const crossRow = rowsData[crossIdx];
     const verb = crossRow.type === 'forecast' ? 'is forecast to cross' : 'crossed';
     const label = crossRow.type === 'forecast' ? 'Forecast crossing' : 'Already crossed';
+    const reachedVal = valueOf(crossRow);
     box.className = 'threshold-summary';
     box.innerHTML = `
       <span>!</span>
       <div>
         <strong>${label}.</strong>
-        Cumulative ${verb} <strong>${fmtMoney(threshold)}</strong> in
+        ${trackLabel}${windowSuffix} ${verb} <strong>${fmtMoney(threshold)}</strong> in
         <strong>${crossRow.ym}</strong>
-        (cumulative reaches <strong>${fmtMoney(crossRow.cumulative)}</strong> that month).
+        (reaches <strong>${fmtMoney(reachedVal)}</strong> that month).
       </div>
     `;
   }
@@ -1171,16 +1218,33 @@ document.getElementById('dlXlsx').addEventListener('click', () => {
 
   // Sheet 2: Forecast
   if (state.forecast) {
-    const fcRows = [['Year-Month','Type','Monthly amount','Cumulative']];
-    let cum = 0;
-    state.forecast.history.forEach(h => {
-      cum += h.total;
-      fcRows.push([h.ym, 'historical', h.total, cum]);
-    });
-    state.forecast.forecast.forEach(f => {
-      cum += f.total;
-      fcRows.push([f.ym, 'forecast', f.total, cum]);
-    });
+    const cStart = document.getElementById('contractStart').value;
+    const cEnd = document.getElementById('contractEnd').value;
+    const cStartYm = cStart ? cStart.slice(0,7) : null;
+    const cEndYm = cEnd ? cEnd.slice(0,7) : null;
+    const hasContract = !!(cStartYm && cEndYm);
+
+    const header = ['Year-Month','Type','Monthly amount','Cumulative'];
+    if (hasContract) header.push('Contract-period cumulative');
+    const fcRows = [header];
+
+    let cum = 0, contractCum = 0;
+    const pushRow = (ym, type, val) => {
+      cum += val;
+      const row = [ym, type, val, cum];
+      if (hasContract) {
+        if (ym >= cStartYm && ym <= cEndYm) {
+          contractCum += val;
+          row.push(contractCum);
+        } else {
+          row.push('');
+        }
+      }
+      fcRows.push(row);
+    };
+    state.forecast.history.forEach(h => pushRow(h.ym, 'historical', h.total));
+    state.forecast.forecast.forEach(f => pushRow(f.ym, 'forecast', f.total));
+
     fcRows.push([]);
     fcRows.push(['Slope (per month)', '', state.forecast.slope, '']);
     fcRows.push(['Intercept', '', state.forecast.intercept, '']);
@@ -1189,11 +1253,18 @@ document.getElementById('dlXlsx').addEventListener('click', () => {
     if (thresholdRaw !== '') {
       fcRows.push(['Threshold', '', parseFloat(thresholdRaw), '']);
     }
+    if (hasContract) {
+      fcRows.push(['Contract start', '', cStart, '']);
+      fcRows.push(['Contract end', '', cEnd, '']);
+    }
     const ws2 = XLSX.utils.aoa_to_sheet(fcRows);
-    ws2['!cols'] = [{wch:14},{wch:14},{wch:16},{wch:16}];
+    ws2['!cols'] = hasContract
+      ? [{wch:14},{wch:14},{wch:16},{wch:16},{wch:24}]
+      : [{wch:14},{wch:14},{wch:16},{wch:16}];
     const r2 = XLSX.utils.decode_range(ws2['!ref']);
     for (let R = 1; R <= r2.e.r; R++) {
-      for (const C of [2, 3]) {
+      const cols = hasContract ? [2, 3, 4] : [2, 3];
+      for (const C of cols) {
         const ref = XLSX.utils.encode_cell({r:R,c:C});
         if (ws2[ref] && typeof ws2[ref].v === 'number') ws2[ref].z = '#,##0.00';
       }
@@ -1247,6 +1318,12 @@ document.getElementById('dlXlsx').addEventListener('click', () => {
 document.getElementById('recalc').addEventListener('click', buildForecast);
 document.getElementById('months').addEventListener('change', buildForecast);
 document.getElementById('threshold').addEventListener('input', () => {
+  if (state.forecast) renderForecastTable();
+});
+document.getElementById('contractStart').addEventListener('change', () => {
+  if (state.forecast) renderForecastTable();
+});
+document.getElementById('contractEnd').addEventListener('change', () => {
   if (state.forecast) renderForecastTable();
 });
 </script>
