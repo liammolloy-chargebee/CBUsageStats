@@ -742,7 +742,11 @@ function ingestFile(file, raw) {
     name: file.name, size: file.size,
     originalCount, addedCount: fileRows.length, dupCount, skipped,
   });
-  state.rows.push(...fileRows);
+  // Use a loop instead of spread to avoid "Maximum call stack size exceeded"
+  // on files with hundreds of thousands of rows
+  for (let i = 0; i < fileRows.length; i++) {
+    state.rows.push(fileRows[i]);
+  }
 }
 
 function finalizeIngestion() {
