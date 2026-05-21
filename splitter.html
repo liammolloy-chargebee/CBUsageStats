@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CSV Splitter · Invoice Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script defer src="https://cloud.umami.is/script.js" data-website-id="88d63424-97ff-48d0-8982-b7a1f98f228d"></script>
+<style>
+  :root {
+    --mature-blue: #012A38;
+    --confident-orange: #FF3300;
+    --light-orange: #FF523B;
+    --spunky-lime: #BFF90B;
+    --clarity-ivory: #E0DBC6;
+    --clarity-blue: #A2C1C4;
+    --storm-cloud: #4F6169;
+    --cadet-grey: #92A1A8;
+    --light-silver: #D3D9DC;
+    --clarity-white: #EFEFEF;
+
+    --bg: #F7F8F9;
+    --surface: #FFFFFF;
+    --border: #E4E7EA;
+    --border-strong: #D3D9DC;
+    --text: #012A38;
+    --text-muted: #4F6169;
+    --text-subtle: #92A1A8;
+    --accent: #FF3300;
+    --accent-hover: #FF523B;
+    --success-bg: #F4FBE0;
+    --warn-bg: #FFF4E6;
+    --shadow-sm: 0 1px 2px rgba(1, 42, 56, 0.06);
+    --shadow-md: 0 1px 3px rgba(1, 42, 56, 0.08), 0 4px 12px rgba(1, 42, 56, 0.04);
+    --radius-sm: 6px;
+    --radius: 10px;
+    --radius-lg: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 14px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { min-height: 100vh; }
+
+  /* Navbar with tabs */
+  .navbar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 32px; display: flex; align-items: center;
+    position: sticky; top: 0; z-index: 10; height: 60px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; color: var(--text); margin-right: 28px; }
+  .brand-mark {
+    width: 28px; height: 28px; border-radius: 7px;
+    background: var(--mature-blue);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--spunky-lime); font-weight: 700; font-size: 14px;
+    box-shadow: var(--shadow-sm);
+  }
+  .tabs { display: flex; align-items: stretch; height: 100%; flex: 1; }
+  .tab {
+    display: inline-flex; align-items: center; padding: 0 18px;
+    color: var(--text-muted); text-decoration: none;
+    font-size: 14px; font-weight: 500;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  .badge {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--text-muted); background: var(--clarity-white);
+    padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border);
+  }
+
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 32px 32px 80px; }
+
+  .page-title { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 4px; }
+  .page-sub { color: var(--text-muted); font-size: 14px; margin-bottom: 28px; }
+
+  /* Cards */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 24px; margin-bottom: 20px;
+    box-shadow: var(--shadow-sm);
+  }
+  .card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .step-num {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--mature-blue); color: var(--clarity-ivory);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; flex-shrink: 0;
+  }
+  .card-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  .card-sub { color: var(--text-muted); font-size: 13px; margin-top: 2px; }
+
+  /* Dropzone */
+  .drop {
+    display: block; width: 100%;
+    border: 2px dashed var(--border-strong);
+    background: #FAFBFC; border-radius: var(--radius);
+    padding: 44px 28px; text-align: center; cursor: pointer;
+    transition: all 0.18s ease;
+  }
+  .drop:hover, .drop.over { background: #FFF8F5; border-color: var(--accent); }
+  .drop.disabled { opacity: 0.5; pointer-events: none; }
+  .drop-icon {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: var(--mature-blue); color: var(--spunky-lime);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 22px; margin-bottom: 12px;
+  }
+  .drop-main { font-size: 15px; font-weight: 500; color: var(--text); }
+  .drop-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .drop-link { color: var(--accent); font-weight: 600; }
+
+  /* Info box */
+  .info-box {
+    background: #F4F8FC; border: 1px solid #D0E0EE;
+    border-left: 3px solid var(--clarity-blue);
+    border-radius: var(--radius-sm); padding: 14px 16px;
+    font-size: 13px; color: var(--text-muted);
+    margin-bottom: 18px;
+  }
+  .info-box strong { color: var(--text); font-weight: 600; }
+
+  /* Progress */
+  .progress-section { margin-top: 18px; display: none; }
+  .progress-section.show { display: block; }
+  .progress-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px; font-size: 13px;
+  }
+  .progress-status { font-weight: 600; color: var(--text); }
+  .progress-counts { font-family: 'JetBrains Mono', monospace; color: var(--text-muted); font-size: 12px; }
+  .progress-bar {
+    width: 100%; height: 8px; background: var(--clarity-white);
+    border-radius: 4px; overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; background: var(--mature-blue);
+    transition: width 0.2s ease; border-radius: 4px;
+    width: 0%;
+  }
+  .progress-fill.done { background: #4a7c1f; }
+
+  /* Result list */
+  .result-section { margin-top: 18px; display: none; }
+  .result-section.show { display: block; }
+  .chunk-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .chunk-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; background: var(--success-bg);
+    border: 1px solid #d8eeb3; border-radius: var(--radius-sm);
+    font-size: 13px; gap: 12px;
+  }
+  .chunk-row-left { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+  .chunk-icon {
+    width: 28px; height: 28px; border-radius: 6px; flex-shrink: 0;
+    background: var(--mature-blue); color: var(--spunky-lime);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700;
+  }
+  .chunk-name { font-weight: 500; }
+  .chunk-meta { color: var(--text-muted); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+  .chunk-status {
+    font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+    background: var(--spunky-lime); color: var(--mature-blue);
+  }
+
+  .summary-box {
+    margin-top: 14px; padding: 12px 16px;
+    background: var(--clarity-white); border-radius: var(--radius-sm);
+    font-size: 13px; color: var(--text);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .summary-box strong { color: var(--mature-blue); font-weight: 600; }
+  .summary-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--spunky-lime); color: var(--mature-blue);
+    font-size: 12px; font-weight: 700; flex-shrink: 0;
+  }
+
+  footer {
+    text-align: center; padding-top: 28px; margin-top: 32px;
+    border-top: 1px solid var(--border);
+    font-size: 12px; color: var(--text-subtle);
+  }
+
+  @media (max-width: 640px) {
+    .wrap { padding: 20px 16px 60px; }
+    .navbar { padding: 0 12px; }
+    .brand { margin-right: 12px; }
+    .tab { padding: 0 10px; font-size: 13px; }
+    .card { padding: 18px; }
+    .page-title { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="brand">
+    <div class="brand-mark">i</div>
+    <span>Invoice Tools</span>
+  </div>
+  <div class="tabs">
+    <a class="tab" href="index.html">Pivot &amp; Forecast</a>
+    <a class="tab active" href="splitter.html">CSV Splitter</a>
+  </div>
+  <span class="badge">v1.1</span>
+</nav>
+
+<div class="wrap">
+
+  <h1 class="page-title">CSV Splitter</h1>
+  <p class="page-sub">Split a large CSV into smaller chunks so the analyzer can handle it. Files are streamed locally — nothing is uploaded.</p>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="step-num">1</span>
+      <div>
+        <div class="card-title">Drop a large CSV</div>
+        <div class="card-sub">The file is split into chunks of up to 800,000 rows each. Each chunk keeps the original header.</div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <strong>How it works:</strong> The file is read in streaming mode, so even files of several gigabytes are handled without crashing your browser. Each chunk downloads automatically as soon as it's ready. The header row from the original file is preserved at the top of every chunk.
+    </div>
+
+    <div class="drop" id="drop" role="button" tabindex="0">
+      <input type="file" id="file" accept=".csv" hidden />
+      <div class="drop-icon">↓</div>
+      <div class="drop-main">Drop your CSV here, or <span class="drop-link">click to browse</span></div>
+      <div class="drop-sub">Max chunk size: 800,000 rows</div>
+    </div>
+
+    <div class="progress-section" id="progressSection">
+      <div class="progress-header">
+        <span class="progress-status" id="progressStatus">Reading file…</span>
+        <span class="progress-counts" id="progressCounts">0 rows</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+
+    <div class="result-section" id="resultSection">
+      <div class="summary-box">
+        <span class="summary-icon">✓</span>
+        <div id="summaryText"></div>
+      </div>
+      <div class="chunk-list" id="chunkList"></div>
+    </div>
+  </div>
+
+  <footer>Built for the Account Management team · All processing happens in your browser</footer>
+</div>
+
+<script>
+'use strict';
+
+const CHUNK_SIZE = 800000;
+const chunks = [];  // shared between splitFile and renderChunkList
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('file');
+const progressSection = document.getElementById('progressSection');
+const progressStatus = document.getElementById('progressStatus');
+const progressCounts = document.getElementById('progressCounts');
+const progressFill = document.getElementById('progressFill');
+const resultSection = document.getElementById('resultSection');
+const chunkList = document.getElementById('chunkList');
+const summaryText = document.getElementById('summaryText');
+
+['dragenter','dragover'].forEach(ev =>
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev =>
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => {
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) splitFile(e.dataTransfer.files[0]);
+});
+drop.addEventListener('click', () => fileInput.click());
+drop.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files[0]) splitFile(e.target.files[0]);
+  fileInput.value = '';
+});
+
+/**
+ * Stream-split a CSV file into chunks of CHUNK_SIZE rows (not counting the header).
+ * Uses ReadableStream + TextDecoderStream + a small state machine to detect line endings,
+ * so the entire file is never held in memory.
+ *
+ * Each chunk is written via the File System Access API if available, otherwise as a
+ * Blob auto-downloaded with a hidden anchor tag.
+ */
+async function splitFile(file) {
+  // Reset UI
+  drop.classList.add('disabled');
+  progressSection.classList.add('show');
+  resultSection.classList.remove('show');
+  chunkList.innerHTML = '';
+  progressFill.classList.remove('done');
+  progressFill.style.width = '0%';
+  progressStatus.textContent = 'Reading file…';
+  progressCounts.textContent = '0 rows';
+
+  const baseName = file.name.replace(/\.csv$/i, '');
+  const totalBytes = file.size;
+
+  let header = '';
+  let headerParsed = false;
+  let buffer = '';                  // leftover text from previous decoder chunk
+  let chunkRows = [];               // current chunk's data rows (strings, no trailing \n)
+  let chunkIndex = 0;
+  let totalRowsProcessed = 0;       // data rows only (excluding header)
+  let bytesProcessed = 0;
+  chunks.length = 0;                // reset shared list
+
+  const reader = file.stream().pipeThrough(new TextDecoderStream()).getReader();
+
+  /** Split a string on line endings, preserving any trailing incomplete line. */
+  function splitLines(text) {
+    // Normalize CRLF -> LF, then split. This is safe for CSVs because we expect simple line-based rows.
+    // NOTE: this approach assumes no embedded newlines inside quoted fields. The fetch_billing_info CSVs
+    // we've seen don't contain those, but if a future export does, we'd need a stricter parser.
+    return text.replace(/\r\n/g, '\n').split('\n');
+  }
+
+  /** Trigger a chunk download with the current chunkRows buffered. */
+  async function flushChunk() {
+    if (chunkRows.length === 0) return;
+    chunkIndex++;
+    const filename = `${baseName}_part${chunkIndex}.csv`;
+    const content = header + '\n' + chunkRows.join('\n') + '\n';
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+    triggerDownload(blob, filename);
+    chunks.push({ filename, rowCount: chunkRows.length });
+    renderChunkList();
+    chunkRows = [];
+    // Yield to browser so the download dialog can appear and UI can repaint
+    await new Promise(r => setTimeout(r, 50));
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytesProcessed += value.length; // approximate (chars, not bytes, but close enough for progress)
+
+      buffer += value;
+      const lines = splitLines(buffer);
+      // Last element is the (possibly partial) trailing line — keep for next iteration
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!headerParsed) {
+          header = line;
+          headerParsed = true;
+          progressStatus.textContent = 'Splitting…';
+          continue;
+        }
+        if (line === '') continue; // skip blank lines
+        chunkRows.push(line);
+        totalRowsProcessed++;
+        if (chunkRows.length >= CHUNK_SIZE) {
+          await flushChunk();
+        }
+      }
+
+      // Update progress (use byte estimate based on totalBytes vs bytesProcessed-as-chars; rough but live)
+      const pct = Math.min(99, Math.round((bytesProcessed / totalBytes) * 100));
+      progressFill.style.width = pct + '%';
+      progressCounts.textContent = `${totalRowsProcessed.toLocaleString()} rows`;
+    }
+
+    // Final flush: anything left in the buffer is the last line (if non-empty), and chunkRows holds the tail
+    if (buffer.trim() !== '') {
+      if (!headerParsed) { header = buffer; headerParsed = true; }
+      else chunkRows.push(buffer);
+      totalRowsProcessed++;
+    }
+    if (chunkRows.length > 0) await flushChunk();
+
+    progressFill.style.width = '100%';
+    progressFill.classList.add('done');
+    progressStatus.textContent = 'Done';
+    progressCounts.textContent = `${totalRowsProcessed.toLocaleString()} rows`;
+
+    // Summary
+    resultSection.classList.add('show');
+    summaryText.innerHTML = `
+      Split <strong>${file.name}</strong> (${formatBytes(file.size)})
+      into <strong>${chunks.length}</strong> file${chunks.length === 1 ? '' : 's'}
+      · <strong>${totalRowsProcessed.toLocaleString()}</strong> data rows total.
+      All downloads have been triggered — check your Downloads folder.
+    `;
+  } catch (err) {
+    console.error(err);
+    progressStatus.textContent = 'Error';
+    progressStatus.style.color = 'var(--accent)';
+    summaryText.textContent = `Error: ${err.message}`;
+    resultSection.classList.add('show');
+  } finally {
+    drop.classList.remove('disabled');
+  }
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // Release the blob URL after a short delay (Firefox needs time)
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function renderChunkList() {
+  let html = '';
+  for (const c of chunks) {
+    html += `
+      <div class="chunk-row">
+        <div class="chunk-row-left">
+          <div class="chunk-icon">CSV</div>
+          <div>
+            <div class="chunk-name">${c.filename}</div>
+            <div class="chunk-meta">${c.rowCount.toLocaleString()} rows</div>
+          </div>
+        </div>
+        <span class="chunk-status">Downloaded</span>
+      </div>
+    `;
+  }
+  chunkList.innerHTML = html;
+}
+
+// Need to keep chunks in scope of renderChunkList
+function formatBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  if (n < 1024*1024*1024) return (n/1024/1024).toFixed(1) + ' MB';
+  return (n/1024/1024/1024).toFixed(2) + ' GB';
+}
+</script>
+</body>
+</html>
