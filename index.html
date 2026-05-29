@@ -717,8 +717,11 @@ function ingestFile(file, raw) {
   const invoiceCol = 'Invoice Number';
   const domainCol = 'Domain';
 
-  // Build set of existing invoice numbers for dedup
-  const existingInvoices = new Set(state.rows.map(r => r.invoiceNumber).filter(Boolean));
+  // Dedup key = Invoice Number + Domain.
+  // Some customers reuse invoice numbers across sub-entities (e.g. one sequence
+  // per region/domain), so Invoice Number alone is not unique.
+  const dedupKey = (inv, dom) => `${inv}|${dom}`;
+  const existingKeys = new Set(state.rows.map(r => dedupKey(r.invoiceNumber, r.domain)).filter(k => k !== '|'));
 
   const fileRows = [];
   let originalCount = 0, dupCount = 0, skipped = 0;
@@ -728,11 +731,12 @@ function ingestFile(file, raw) {
     const a = parseAmount(r[amountCol]);
     const inv = (r[invoiceCol] || '').trim();
     if (!d || isNaN(a)) { skipped++; continue; }
-    if (inv && existingInvoices.has(inv)) { dupCount++; continue; }
-    if (inv) existingInvoices.add(inv);
+    const domain = (r[domainCol] || '').trim();
+    const key = dedupKey(inv, domain);
+    if (inv && existingKeys.has(key)) { dupCount++; continue; }
+    if (inv) existingKeys.add(key);
     const consideredRaw = String(r[consideredCol] ?? '').trim().toLowerCase();
     const considered = consideredRaw === 'true';
-    const domain = (r[domainCol] || '').trim();
     fileRows.push({
       date: d, ym: ymKey(d), amount: a, considered,
       invoiceNumber: inv, sourceFile: file.name, domain,
